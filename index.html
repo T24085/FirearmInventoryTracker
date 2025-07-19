@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Firearm Tracker</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+</head>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<body class="bg-light">
+
+  <div class="container mt-5">
+    <!-- Stats -->
+<div class="row mb-4" id="stats">
+  <div class="col-md-3">
+    <div class="card text-white bg-primary">
+      <div class="card-body">
+        <h5 class="card-title">Total Firearms</h5>
+        <p class="card-text fs-4" id="stat-count">0</p>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-3">
+    <div class="card text-white bg-success">
+      <div class="card-body">
+        <h5 class="card-title">Total Purchase Cost</h5>
+        <p class="card-text fs-4" id="stat-cost">$0</p>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-3">
+    <div class="card text-white bg-info">
+      <div class="card-body">
+        <h5 class="card-title">Total Value</h5>
+        <p class="card-text fs-4" id="stat-value">$0</p>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-3">
+    <div class="card text-white bg-dark">
+      <div class="card-body">
+        <h5 class="card-title">Profit / Loss</h5>
+        <p class="card-text fs-4" id="stat-profit">$0</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+    <h1 class="mb-4">🔫 Firearm Inventory Tracker</h1>
+
+    <!-- Action Buttons -->
+    <div class="mb-3">
+      <button class="btn btn-outline-info" onclick="downloadCSV()">📥 Export as CSV</button>
+    </div>
+<div class="card mb-4">
+  <div class="card-body">
+    <h5 class="card-title">📊 Firearm Value Chart</h5>
+    <canvas id="firearmChart" height="100"></canvas>
+  </div>
+</div>
+
+    <!-- Form -->
+    <form id="firearmForm" class="mb-4">
+      <div class="row g-2">
+        <div class="col-md-4"><input type="text" id="name" class="form-control" placeholder="Firearm Name" required></div>
+        <div class="col-md-4"><input type="text" id="serial_number" class="form-control" placeholder="Serial Number" required></div>
+        <div class="col-md-4"><input type="number" id="purchase_price" class="form-control" placeholder="Purchase Price" required></div>
+        <div class="col-md-4"><input type="number" id="current_value" class="form-control" placeholder="Current Value"></div>
+        <div class="col-md-4"><input type="date" id="purchase_date" class="form-control"></div>
+        <div class="col-md-4"><input type="text" id="notes" class="form-control" placeholder="Notes"></div>
+        <div class="col-12"><button type="submit" class="btn btn-primary">Add Firearm</button></div>
+      </div>
+    </form>
+
+    <!-- Table -->
+    <table class="table table-bordered table-hover" id="firearmTable">
+      <thead class="table-dark">
+        <tr>
+          <th>Name</th>
+          <th>Serial</th>
+          <th>Purchase Price</th>
+          <th>Value</th>
+          <th>Purchase Date</th>
+          <th>Notes</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody id="firearmList"></tbody>
+    </table>
+  </div>
+
+  <script>
+  const apiUrl = 'http://127.0.0.1:5000/api/firearms';
+  let chart; // Global chart instance
+
+  async function loadFirearms() {
+    const res = await fetch(apiUrl);
+    const data = await res.json();
+
+    const table = document.getElementById('firearmList');
+    table.innerHTML = '';
+
+    let totalCount = 0;
+    let totalCost = 0;
+    let totalValue = 0;
+
+    const labels = [];
+    const values = [];
+
+    data.forEach(firearm => {
+      totalCount++;
+      totalCost += parseFloat(firearm.purchase_price) || 0;
+      totalValue += parseFloat(firearm.current_value) || 0;
+
+      labels.push(firearm.name);
+      values.push(parseFloat(firearm.current_value) || 0);
+
+      const row = document.createElement('tr');
+      row.innerHTML = `
+        <td><span>${firearm.name}</span><input class="form-control d-none" value="${firearm.name}"></td>
+        <td><span>${firearm.serial_number}</span><input class="form-control d-none" value="${firearm.serial_number}" disabled></td>
+        <td><span>$${firearm.purchase_price}</span><input class="form-control d-none" type="number" value="${firearm.purchase_price}"></td>
+        <td><span>$${firearm.current_value || ''}</span><input class="form-control d-none" type="number" value="${firearm.current_value || ''}"></td>
+        <td><span>${firearm.purchase_date || ''}</span><input class="form-control d-none" type="date" value="${firearm.purchase_date || ''}"></td>
+        <td><span>${firearm.notes || ''}</span><input class="form-control d-none" value="${firearm.notes || ''}"></td>
+        <td>
+          <button class="btn btn-sm btn-warning me-1" onclick="toggleEdit(this)">Edit</button>
+          <button class="btn btn-sm btn-success d-none" onclick="saveEdit(this, '${firearm.serial_number}')">Save</button>
+          <button class="btn btn-sm btn-danger" onclick="deleteFirearm('${firearm.serial_number}')">Delete</button>
+        </td>
+      `;
+      table.appendChild(row);
+    });
+
+    // Update stats
+    document.getElementById('stat-count').innerText = totalCount;
+    document.getElementById('stat-cost').innerText = `$${totalCost.toFixed(2)}`;
+    document.getElementById('stat-value').innerText = `$${totalValue.toFixed(2)}`;
+    document.getElementById('stat-profit').innerText = `$${(totalValue - totalCost).toFixed(2)}`;
+
+    // Update chart
+    renderChart(labels, values);
+  }
+
+  function renderChart(labels, values) {
+    const ctx = document.getElementById('firearmChart').getContext('2d');
+    if (chart) chart.destroy();
+    chart = new Chart(ctx, {
+      type: 'bar',
+      data: {
+        labels: labels,
+        datasets: [{
+          label: 'Current Value ($)',
+          data: values,
+          backgroundColor: 'rgba(54, 162, 235, 0.6)',
+          borderColor: 'rgba(54, 162, 235, 1)',
+          borderWidth: 1
+        }]
+      },
+      options: {
+        responsive: true,
+        scales: {
+          y: { beginAtZero: true }
+        }
+      }
+    });
+  }
+
+  // Add firearm
+  document.getElementById('firearmForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const firearm = {
+      name: document.getElementById('name').value,
+      serial_number: document.getElementById('serial_number').value,
+      purchase_price: parseFloat(document.getElementById('purchase_price').value),
+      current_value: parseFloat(document.getElementById('current_value').value) || null,
+      purchase_date: document.getElementById('purchase_date').value || null,
+      notes: document.getElementById('notes').value || null
+    };
+
+    await fetch(apiUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(firearm)
+    });
+
+    e.target.reset();
+    loadFirearms();
+  });
+
+  // Delete firearm
+  async function deleteFirearm(serial) {
+    await fetch(`${apiUrl}/${serial}`, { method: 'DELETE' });
+    loadFirearms();
+  }
+
+  // Enable editing
+  function toggleEdit(btn) {
+    const row = btn.closest('tr');
+    row.querySelectorAll('span').forEach(el => el.classList.add('d-none'));
+    row.querySelectorAll('input').forEach(el => el.classList.remove('d-none'));
+    btn.classList.add('d-none');
+    row.querySelector('.btn-success').classList.remove('d-none');
+  }
+
+  // Save edits
+  async function saveEdit(btn, serial) {
+    const row = btn.closest('tr');
+    const inputs = row.querySelectorAll('input');
+    const updated = {
+      name: inputs[0].value,
+      serial_number: serial,
+      purchase_price: parseFloat(inputs[2].value),
+      current_value: parseFloat(inputs[3].value),
+      purchase_date: inputs[4].value,
+      notes: inputs[5].value
+    };
+
+    await fetch(`${apiUrl}/${serial}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(updated)
+    });
+
+    loadFirearms();
+  }
+
+  // Download CSV
+  function downloadCSV() {
+    window.location.href = 'http://127.0.0.1:5000/download/csv';
+  }
+
+  // Initial load
+  loadFirearms();
+</script>
+</body>
+</html>
