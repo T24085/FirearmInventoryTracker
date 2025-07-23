@@ -1,4 +1,4 @@
-from flask import Flask, session, jsonify, request, Response
+from flask import Flask, jsonify, request, Response
 from flask_cors import CORS
 from drive import drive_bp  # You can keep this if you want to retry Drive later
 from fpdf import FPDF
@@ -9,7 +9,6 @@ import csv
 app = Flask(__name__)
 app.secret_key = 'your_flask_secret_key_here'  # Use a real secret in production
 CORS(app)
-app.register_blueprint(drive_bp)
 
 DATA_FILE = 'firearms.json'
 
