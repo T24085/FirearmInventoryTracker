@@ -1,6 +1,6 @@
-from flask import Flask, session, jsonify, request, Response
+from flask import Flask, jsonify, request, Response
 from flask_cors import CORS
-from drive import drive_bp  # You can keep this if you want to retry Drive later
+from fpdf import FPDF
 import os
 import json
 import csv
@@ -8,7 +8,6 @@ import csv
 app = Flask(__name__)
 app.secret_key = 'your_flask_secret_key_here'  # Use a real secret in production
 CORS(app)
-app.register_blueprint(drive_bp)
 
 DATA_FILE = 'firearms.json'
 
@@ -85,6 +84,42 @@ def download_csv():
         csv_string,
         mimetype="text/csv",
         headers={"Content-Disposition": "attachment;filename=firearms.csv"}
+    )
+
+
+# ----- PDF Export -----
+@app.route('/download/pdf', methods=['GET'])
+def download_pdf():
+    data = load_data()
+
+    pdf = FPDF()
+    pdf.add_page()
+    pdf.set_font("Arial", size=12)
+
+    pdf.cell(0, 10, txt="Firearm Inventory", ln=True, align='C')
+    pdf.ln(10)
+
+    headers = ['Name', 'Serial Number', 'Purchase Price', 'Current Value', 'Purchase Date', 'Notes']
+    col_width = 30
+    for header in headers:
+        pdf.cell(col_width, 10, txt=header, border=1)
+    pdf.ln()
+
+    for firearm in data:
+        pdf.cell(col_width, 10, txt=str(firearm.get('name', '')), border=1)
+        pdf.cell(col_width, 10, txt=str(firearm.get('serial_number', '')), border=1)
+        pdf.cell(col_width, 10, txt=str(firearm.get('purchase_price', '')), border=1)
+        pdf.cell(col_width, 10, txt=str(firearm.get('current_value', '')), border=1)
+        pdf.cell(col_width, 10, txt=str(firearm.get('purchase_date', '')), border=1)
+        pdf.cell(col_width, 10, txt=str(firearm.get('notes', '')), border=1)
+        pdf.ln()
+
+    pdf_output = pdf.output(dest='S').encode('latin-1')
+
+    return Response(
+        pdf_output,
+        mimetype="application/pdf",
+        headers={"Content-Disposition": "attachment;filename=firearms.pdf"}
     )
 
 
